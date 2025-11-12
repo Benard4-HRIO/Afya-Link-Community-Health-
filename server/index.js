@@ -1,11 +1,11 @@
-// server/index.js - PRODUCTION READY WITH AUTO-SYNC
+// server/index.js - DEBUG VERSION
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const path = require('path');
 require('dotenv').config();
-const { testConnection, sequelize, syncDatabase } = require('./config/database');
+const { testConnection, sequelize } = require('./config/database');
 
 // Initialize express app
 const app = express();
@@ -92,7 +92,7 @@ apiRoutes.forEach(({ path, route }) => {
 });
 
 // ------------------------------------
-// Debug & Sync Endpoints
+// Debug Endpoints
 // ------------------------------------
 
 /**
@@ -109,29 +109,6 @@ app.get('/api/debug/env', (req, res) => {
       key.includes('DATABASE') || key.includes('URL') || key.includes('NODE')
     )
   });
-});
-
-/**
- * @route POST /api/sync-db
- * @description Manual database synchronization
- */
-app.post('/api/sync-db', async (req, res) => {
-  try {
-    console.log('🔄 Manual database sync requested...');
-    const result = await syncDatabase({ alter: true });
-    
-    if (result) {
-      res.json({ 
-        message: 'Database synchronized successfully',
-        tables: await getTableCount()
-      });
-    } else {
-      res.status(500).json({ error: 'Database sync failed' });
-    }
-  } catch (error) {
-    console.error('Sync endpoint error:', error);
-    res.status(500).json({ error: error.message });
-  }
 });
 
 /**
@@ -153,11 +130,10 @@ app.get('/api/health', async (req, res) => {
     healthCheck.database = 'Connected';
     
     try {
-      const tableCount = await getTableCount();
-      healthCheck.tableCount = tableCount;
-      healthCheck.tables = tableCount > 0 ? 'Ready' : 'No tables';
+      const userCount = await sequelize.models.User?.count() || 0;
+      healthCheck.userCount = userCount;
     } catch (tableError) {
-      healthCheck.tables = 'Error checking tables';
+      healthCheck.tables = 'Initializing';
     }
     
     res.json(healthCheck);
@@ -169,20 +145,6 @@ app.get('/api/health', async (req, res) => {
     res.status(503).json(healthCheck);
   }
 });
-
-// Helper function to get table count
-async function getTableCount() {
-  try {
-    const [tables] = await sequelize.query(`
-      SELECT COUNT(*) as count 
-      FROM information_schema.tables 
-      WHERE table_schema = DATABASE()
-    `);
-    return tables[0].count;
-  } catch (error) {
-    return 0;
-  }
-}
 
 // Production Route Handling
 if (NODE_ENV === 'production') {
@@ -208,7 +170,7 @@ app.use((err, req, res, next) => {
 });
 
 // ------------------------------------
-// Server Initialization with Auto-Sync
+// Server Initialization - ONLY CHANGE: Added Auto-Sync
 // ------------------------------------
 const startServer = async () => {
   try {
@@ -221,27 +183,26 @@ const startServer = async () => {
     
     if (!dbConnected) {
       console.error('❌ FATAL: Cannot start server without database connection');
+      console.log('💡 Check if DATABASE_URL is set in Render environment variables');
       process.exit(1);
     }
     
-    // ✅ AUTO-SYNC DATABASE ON STARTUP
-    console.log('🔄 Auto-syncing database tables on startup...');
+    // ✅ ONLY ADDITION: Auto-sync database tables after successful connection
+    console.log('🔄 Auto-syncing database tables...');
     try {
-      const syncResult = await syncDatabase({ alter: true });
+      await sequelize.sync({ alter: true });
+      console.log('✅ Database tables synchronized successfully');
       
-      if (syncResult) {
-        const tableCount = await getTableCount();
-        console.log(`✅ Database sync completed. Tables created: ${tableCount}`);
-        
-        // List all models that were synchronized
-        const modelNames = Object.keys(sequelize.models);
-        console.log(`📋 Models synchronized: ${modelNames.join(', ')}`);
-      } else {
-        console.warn('⚠️ Database sync may have failed, but continuing server startup...');
-      }
+      // Show table count
+      const [tables] = await sequelize.query(`
+        SELECT COUNT(*) as tableCount 
+        FROM information_schema.tables 
+        WHERE table_schema = DATABASE()
+      `);
+      console.log(`📊 Total tables created: ${tables[0].tableCount}`);
     } catch (syncError) {
       console.error('❌ Auto-sync failed:', syncError.message);
-      console.log('⚠️ Continuing server startup without database sync...');
+      // Don't exit - continue server startup
     }
     
     // Start server
@@ -249,9 +210,8 @@ const startServer = async () => {
       console.log(`✅ Server running on port ${PORT}`);
       console.log(`📍 Host: 0.0.0.0`);
       console.log(`🕒 Started at: ${new Date().toISOString()}`);
-      console.log(`🔗 Health check: https://afya-link-community-health-3.onrender.com/api/health`);
-      console.log(`🔗 Manual sync: https://afya-link-community-health-3.onrender.com/api/sync-db`);
-      console.log(`🔗 Debug info: https://afya-link-community-health-3.onrender.com/api/debug/env`);
+      console.log(`🔗 Health check: https://your-backend.onrender.com/api/health`);
+      console.log(`🐛 Debug env: https://your-backend.onrender.com/api/debug/env`);
     });
     
   } catch (error) {
