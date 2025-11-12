@@ -1,4 +1,4 @@
-// server/server.js - Optimized for Railway + Render
+// server/index.js - DEBUG VERSION
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
@@ -10,7 +10,13 @@ const { testConnection, sequelize } = require('./config/database');
 // Initialize express app
 const app = express();
 
-// ✅ Configuration Constants
+// ✅ DEBUG: Log environment variables
+console.log('🔍 ENVIRONMENT CHECK:');
+console.log('DATABASE_URL:', process.env.DATABASE_URL ? 'SET' : 'NOT SET');
+console.log('NODE_ENV:', process.env.NODE_ENV);
+console.log('CLIENT_URL:', process.env.CLIENT_URL);
+console.log('PORT:', process.env.PORT);
+
 const PORT = process.env.PORT || 10000;
 const NODE_ENV = process.env.NODE_ENV || 'development';
 
@@ -30,21 +36,17 @@ app.set('trust proxy', 1);
 // ------------------------------------
 // Security & Middleware Configuration
 // ------------------------------------
-
-// Simplified Helmet for production
 app.use(helmet({
-  contentSecurityPolicy: false, // Disable for simplicity in production
+  contentSecurityPolicy: false,
   crossOriginEmbedderPolicy: false
 }));
 
-// CORS configuration
 app.use(cors({
   origin: CLIENT_URL,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
 }));
 
-// Rate limiting
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: NODE_ENV === 'production' ? 100 : 500,
@@ -53,7 +55,6 @@ const limiter = rateLimit({
 });
 app.use(limiter);
 
-// Body parsing middleware
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
@@ -91,8 +92,24 @@ apiRoutes.forEach(({ path, route }) => {
 });
 
 // ------------------------------------
-// Health & Diagnostic Endpoints
+// Debug Endpoints
 // ------------------------------------
+
+/**
+ * @route GET /api/debug/env
+ * @description Debug environment variables
+ */
+app.get('/api/debug/env', (req, res) => {
+  res.json({
+    databaseUrl: process.env.DATABASE_URL ? 'SET' : 'NOT SET',
+    nodeEnv: process.env.NODE_ENV,
+    clientUrl: process.env.CLIENT_URL,
+    port: process.env.PORT,
+    allEnvVars: Object.keys(process.env).filter(key => 
+      key.includes('DATABASE') || key.includes('URL') || key.includes('NODE')
+    )
+  });
+});
 
 /**
  * @route GET /api/health
@@ -112,7 +129,6 @@ app.get('/api/health', async (req, res) => {
     await sequelize.authenticate();
     healthCheck.database = 'Connected';
     
-    // Simple table check without complex error handling
     try {
       const userCount = await sequelize.models.User?.count() || 0;
       healthCheck.userCount = userCount;
@@ -130,75 +146,14 @@ app.get('/api/health', async (req, res) => {
   }
 });
 
-/**
- * @route GET /api/debug/db
- * @description Database debugging information
- */
-app.get('/api/debug/db', async (req, res) => {
-  try {
-    await sequelize.authenticate();
-    
-    const [dbInfo] = await sequelize.query('SELECT DATABASE() as db, USER() as user');
-    const [tables] = await sequelize.query('SHOW TABLES');
-    
-    res.json({
-      status: 'Connected',
-      database: dbInfo[0].db,
-      user: dbInfo[0].user,
-      tables: tables.map(t => Object.values(t)[0]),
-      environment: NODE_ENV
-    });
-  } catch (error) {
-    res.status(500).json({
-      status: 'Error',
-      error: error.message,
-      environment: NODE_ENV
-    });
-  }
-});
-
-/**
- * @route POST /api/sync-db
- * @description Database synchronization (development only)
- */
-app.post('/api/sync-db', async (req, res) => {
-  if (NODE_ENV === 'production') {
-    return res.status(403).json({ 
-      error: 'Database sync is disabled in production' 
-    });
-  }
-
-  try {
-    const { force = false, alter = true } = req.body;
-    
-    await sequelize.sync({ force, alter });
-    res.json({ 
-      message: 'Database synced successfully',
-      mode: force ? 'force' : alter ? 'alter' : 'safe'
-    });
-  } catch (error) {
-    res.status(500).json({ 
-      error: 'Database sync failed',
-      details: error.message 
-    });
-  }
-});
-
-// ------------------------------------
 // Production Route Handling
-// ------------------------------------
 if (NODE_ENV === 'production') {
-  // Serve React app for all non-API routes
   app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, '../client/build/index.html'));
   });
 }
 
-// ------------------------------------
-// Error Handling Middleware
-// ------------------------------------
-
-// 404 handler for API routes
+// Error Handling
 app.use('/api/*', (req, res) => {
   res.status(404).json({ 
     message: 'API endpoint not found',
@@ -206,19 +161,8 @@ app.use('/api/*', (req, res) => {
   });
 });
 
-// Global error handler
 app.use((err, req, res, next) => {
   console.error('❌ Server Error:', err.message);
-
-  // Database errors
-  if (err.name?.includes('Sequelize')) {
-    return res.status(400).json({
-      message: 'Database operation failed',
-      error: NODE_ENV === 'development' ? err.message : 'Database error'
-    });
-  }
-
-  // Default error response
   res.status(err.status || 500).json({
     message: 'Internal server error',
     error: NODE_ENV === 'development' ? err.message : 'Something went wrong'
@@ -238,13 +182,9 @@ const startServer = async () => {
     const dbConnected = await testConnection();
     
     if (!dbConnected) {
-      console.error('❌ Cannot start server without database connection');
-      
-      if (NODE_ENV === 'development') {
-        console.warn('⚠️  Starting in degraded mode (frontend only)');
-      } else {
-        process.exit(1);
-      }
+      console.error('❌ FATAL: Cannot start server without database connection');
+      console.log('💡 Check if DATABASE_URL is set in Render environment variables');
+      process.exit(1);
     }
     
     // Start server
@@ -252,12 +192,8 @@ const startServer = async () => {
       console.log(`✅ Server running on port ${PORT}`);
       console.log(`📍 Host: 0.0.0.0`);
       console.log(`🕒 Started at: ${new Date().toISOString()}`);
-      
-      if (NODE_ENV === 'development') {
-        console.log(`🔗 Health check: http://localhost:${PORT}/api/health`);
-      } else {
-        console.log(`🔗 Production health: [your-backend-url].onrender.com/api/health`);
-      }
+      console.log(`🔗 Health check: https://your-backend.onrender.com/api/health`);
+      console.log(`🐛 Debug env: https://your-backend.onrender.com/api/debug/env`);
     });
     
   } catch (error) {

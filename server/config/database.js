@@ -1,110 +1,72 @@
-// server/config/database.js - Updated for Railway MySQL + Render
+// server/config/database.js - DEBUG VERSION FOR RAILWAY
 const { Sequelize } = require('sequelize');
 require('dotenv').config();
 
-// ✅ Configuration Constants
+// ✅ DEBUG: Check environment variables immediately
+console.log('🔍 DATABASE DEBUG - Environment Check:');
+console.log('DATABASE_URL:', process.env.DATABASE_URL ? 'SET' : 'NOT SET');
+console.log('NODE_ENV:', process.env.NODE_ENV);
+console.log('DB_NAME:', process.env.DB_NAME);
+
+if (process.env.DATABASE_URL) {
+  const safeUrl = process.env.DATABASE_URL.replace(/:[^:@]+@/, ':****@');
+  console.log('📍 DATABASE_URL (safe):', safeUrl);
+}
+
 const NODE_ENV = process.env.NODE_ENV || 'development';
 
 // ------------------------------------
-// Database Configuration - SIMPLIFIED
+// Database Configuration - ULTRA SIMPLIFIED
 // ------------------------------------
 
 /**
- * Get database configuration - PRIORITIZE DATABASE_URL
- */
-const getDatabaseConfig = () => {
-  // Always use DATABASE_URL first (Railway provides this)
-  if (process.env.DATABASE_URL) {
-    console.log('🔗 Using DATABASE_URL from Railway');
-    return {
-      connectionString: process.env.DATABASE_URL,
-      dialect: 'mysql'
-    };
-  }
-
-  // Fallback for local development only
-  console.log('🔗 Using local MySQL database');
-  return {
-    database: process.env.DB_NAME || 'afyalink_db',
-    username: process.env.DB_USER || 'root',
-    password: process.env.DB_PASSWORD || '',
-    host: process.env.DB_HOST || 'localhost',
-    port: process.env.DB_PORT || 3306,
-    dialect: 'mysql'
-  };
-};
-
-/**
- * Get Sequelize dialect options - OPTIMIZED FOR RAILWAY
- */
-const getDialectOptions = () => {
-  const baseOptions = {
-    charset: 'utf8mb4',
-    decimalNumbers: true,
-    supportBigNumbers: true,
-    bigNumberStrings: false
-  };
-
-  // Railway MySQL requires SSL in production
-  if (process.env.NODE_ENV === 'production' || process.env.DATABASE_URL) {
-    baseOptions.ssl = {
-      require: true,
-      rejectUnauthorized: false
-    };
-  }
-
-  return baseOptions;
-};
-
-/**
- * Initialize Sequelize - SIMPLIFIED FOR DEPLOYMENT
+ * Initialize Sequelize - DIRECT APPROACH
  */
 const initializeSequelize = () => {
   try {
-    const dbConfig = getDatabaseConfig();
-    const dialectOptions = getDialectOptions();
-
-    const sequelizeConfig = {
-      dialect: 'mysql',
-      logging: NODE_ENV === 'development' ? 
-        (msg) => console.log(`📊 Sequelize: ${msg}`) : false,
-      pool: {
-        max: 5, // Reduced for better performance
-        min: 0,
-        acquire: 30000,
-        idle: 10000,
-      },
-      dialectOptions,
-      define: {
-        freezeTableName: true,
-        timestamps: true,
-        underscored: false,
-        charset: 'utf8mb4',
-        collate: 'utf8mb4_unicode_ci'
-      },
-      retry: {
-        max: 2, // Reduced retries for faster failure detection
-      },
-      // Remove complex retry delay for simplicity
-    };
-
-    // Use DATABASE_URL (Railway) or individual config (local)
-    if (dbConfig.connectionString) {
-      console.log('📍 Connecting to Railway MySQL...');
-      return new Sequelize(dbConfig.connectionString, sequelizeConfig);
-    } else {
-      console.log('📍 Connecting to local MySQL...');
-      return new Sequelize(
-        dbConfig.database,
-        dbConfig.username,
-        dbConfig.password,
-        {
-          host: dbConfig.host,
-          port: dbConfig.port,
-          ...sequelizeConfig
+    // ALWAYS use DATABASE_URL if available (Railway)
+    if (process.env.DATABASE_URL) {
+      console.log('🚀 USING RAILWAY MYSQL DATABASE');
+      
+      return new Sequelize(process.env.DATABASE_URL, {
+        dialect: 'mysql',
+        logging: NODE_ENV === 'development' ? console.log : false,
+        pool: {
+          max: 5,
+          min: 0,
+          acquire: 30000,
+          idle: 10000,
+        },
+        dialectOptions: {
+          ssl: {
+            require: true,
+            rejectUnauthorized: false
+          }
+        },
+        define: {
+          freezeTableName: true,
+          timestamps: true,
+          underscored: false,
+        },
+        retry: {
+          max: 2,
         }
-      );
+      });
     }
+
+    // Fallback for local development
+    console.log('⚠️  USING LOCAL MYSQL FALLBACK');
+    return new Sequelize(
+      process.env.DB_NAME || 'afyalink_db',
+      process.env.DB_USER || 'root',
+      process.env.DB_PASSWORD || '',
+      {
+        host: process.env.DB_HOST || 'localhost',
+        port: process.env.DB_PORT || 3306,
+        dialect: 'mysql',
+        logging: NODE_ENV === 'development' ? console.log : false,
+      }
+    );
   } catch (error) {
     console.error('❌ Failed to initialize Sequelize:', error.message);
     throw error;
@@ -115,47 +77,61 @@ const initializeSequelize = () => {
 const sequelize = initializeSequelize();
 
 // ------------------------------------
-// Connection Test - SIMPLIFIED
+// Connection Test - IMPROVED DEBUGGING
 // ------------------------------------
 
 /**
- * Test database connection with basic retry logic
+ * Test database connection with detailed error reporting
  */
 const testConnection = async (retryCount = 0) => {
   const MAX_RETRIES = 2;
-  const RETRY_DELAY = 2000;
   
   try {
-    console.log(`🔄 Testing database connection (attempt ${retryCount + 1}/${MAX_RETRIES})...`);
+    console.log(`🔄 Database connection attempt ${retryCount + 1}/${MAX_RETRIES}...`);
     
     await sequelize.authenticate();
-    console.log('✅ MySQL connection established successfully.');
+    console.log('✅ Database connection established successfully');
 
-    // Get basic database information
-    const [dbInfo] = await sequelize.query('SELECT DATABASE() as db, USER() as user');
-    console.log(`📍 Connected to: ${dbInfo[0].db}`);
-    console.log(`👤 Database user: ${dbInfo[0].user}`);
+    // Test basic query to verify everything works
+    try {
+      const [dbInfo] = await sequelize.query('SELECT DATABASE() as db, USER() as user');
+      console.log(`📍 Connected to database: ${dbInfo[0].db}`);
+      console.log(`👤 Connected as user: ${dbInfo[0].user}`);
+    } catch (queryError) {
+      console.log('⚠️  Connected but query test failed:', queryError.message);
+    }
 
     return true;
 
   } catch (error) {
     console.error(`❌ Database connection failed (attempt ${retryCount + 1}):`, error.message);
-
-    // Log which database we're trying to connect to
-    const dbConfig = getDatabaseConfig();
-    if (dbConfig.connectionString) {
-      const safeUrl = dbConfig.connectionString.replace(/:[^:@]+@/, ':****@');
-      console.log(`🔗 Trying to connect to: ${safeUrl}`);
+    
+    // Detailed error information
+    if (error.original) {
+      console.error('🔧 Original error:', error.original.message);
+    }
+    
+    // Show what we're trying to connect to
+    if (process.env.DATABASE_URL) {
+      const safeUrl = process.env.DATABASE_URL.replace(/:[^:@]+@/, ':****@');
+      console.log(`🔗 Attempted connection to: ${safeUrl}`);
+    } else {
+      console.log(`🔗 Attempted local connection to: ${process.env.DB_HOST || 'localhost'}:${process.env.DB_PORT || 3306}`);
     }
 
-    // Simple retry logic
+    // Retry logic
     if (retryCount < MAX_RETRIES - 1) {
-      console.log(`⏳ Retrying in 2 seconds...`);
-      await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+      console.log('⏳ Retrying in 2 seconds...');
+      await new Promise(resolve => setTimeout(resolve, 2000));
       return testConnection(retryCount + 1);
     }
 
     console.error('💥 All connection attempts failed');
+    console.log('💡 Check:');
+    console.log('  1. DATABASE_URL environment variable is set in Render');
+    console.log('  2. Railway MySQL database is running');
+    console.log('  3. Database credentials are correct');
+    
     return false;
   }
 };
@@ -170,8 +146,8 @@ const testConnection = async (retryCount = 0) => {
 const syncDatabase = async (options = {}) => {
   try {
     const syncOptions = {
-      force: false, // ⚠️ Never use force in production!
-      alter: NODE_ENV === 'development', // Only alter in development
+      force: false,
+      alter: NODE_ENV === 'development',
       ...options
     };
 
@@ -179,28 +155,18 @@ const syncDatabase = async (options = {}) => {
       throw new Error('Force sync is not allowed in production');
     }
 
-    console.log(`🔄 Synchronizing database (${NODE_ENV} mode)...`);
-    
-    if (syncOptions.force) {
-      console.warn('⚠️  FORCE SYNC: This will drop all tables and data!');
-    } else if (syncOptions.alter) {
-      console.log('🔧 ALTER SYNC: Modifying existing tables');
-    } else {
-      console.log('🔒 SAFE SYNC: Creating missing tables only');
-    }
-
+    console.log(`🔄 Database sync (${NODE_ENV} mode)...`);
     await sequelize.sync(syncOptions);
     console.log('✅ Database synchronized successfully');
-
     return true;
   } catch (error) {
-    console.error('❌ Database synchronization failed:', error.message);
+    console.error('❌ Database sync failed:', error.message);
     return false;
   }
 };
 
 // ------------------------------------
-// Health Check Function - SIMPLIFIED
+// Health Check Function
 // ------------------------------------
 
 /**
@@ -208,10 +174,8 @@ const syncDatabase = async (options = {}) => {
  */
 const checkDatabaseHealth = async () => {
   try {
-    // Test basic connection
     await sequelize.authenticate();
-
-    // Get database stats
+    
     const [dbInfo] = await sequelize.query('SELECT DATABASE() as db, NOW() as serverTime');
     const [tableCount] = await sequelize.query(`
       SELECT COUNT(*) as count 
@@ -245,10 +209,10 @@ const checkDatabaseHealth = async () => {
 const closeDatabase = async () => {
   try {
     await sequelize.close();
-    console.log('✅ Database connection closed gracefully');
+    console.log('✅ Database connection closed');
     return true;
   } catch (error) {
-    console.error('❌ Error closing database connection:', error.message);
+    console.error('❌ Error closing database:', error.message);
     return false;
   }
 };
@@ -264,7 +228,7 @@ const executeQuery = async (query, options = {}) => {
     });
     return { success: true, results };
   } catch (error) {
-    console.error('❌ Query execution failed:', error.message);
+    console.error('❌ Query failed:', error.message);
     return { success: false, error: error.message };
   }
 };
