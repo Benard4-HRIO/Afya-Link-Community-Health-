@@ -1,4 +1,4 @@
-// server/config/database.js - OPTIMIZED FOR RAILWAY PASSWORD
+// server/config/database.js - PRODUCTION READY WITH AUTO-SYNC
 const { Sequelize } = require('sequelize');
 require('dotenv').config();
 
@@ -26,11 +26,11 @@ if (process.env.DATABASE_URL) {
 const NODE_ENV = process.env.NODE_ENV || 'development';
 
 // ------------------------------------
-// Database Configuration - ENHANCED FOR RAILWAY
+// Database Configuration - PRODUCTION OPTIMIZED
 // ------------------------------------
 
 /**
- * Initialize Sequelize - ENHANCED WITH BETTER ERROR HANDLING
+ * Initialize Sequelize - PRODUCTION READY
  */
 const initializeSequelize = () => {
   try {
@@ -52,7 +52,7 @@ const initializeSequelize = () => {
             require: true,
             rejectUnauthorized: false
           },
-          connectTimeout: 60000, // 60 seconds timeout
+          connectTimeout: 60000,
         },
         define: {
           freezeTableName: true,
@@ -70,7 +70,6 @@ const initializeSequelize = () => {
             /ETIMEDOUT/,
           ],
         },
-        // Add connection timeout
         connectTimeout: 60000,
       };
 
@@ -93,7 +92,6 @@ const initializeSequelize = () => {
     );
   } catch (error) {
     console.error('❌ CRITICAL: Failed to initialize Sequelize:', error.message);
-    console.error('💡 Check your DATABASE_URL format in Render environment variables');
     throw error;
   }
 };
@@ -102,7 +100,7 @@ const initializeSequelize = () => {
 const sequelize = initializeSequelize();
 
 // ------------------------------------
-// Connection Test - ENHANCED WITH BETTER DIAGNOSTICS
+// Connection Test - PRODUCTION READY
 // ------------------------------------
 
 /**
@@ -126,7 +124,6 @@ const testConnection = async (retryCount = 0) => {
       console.log('   User:', dbInfo[0].user);
       console.log('   MySQL Version:', dbInfo[0].version);
       
-      // Test table access
       const [tables] = await sequelize.query(`
         SELECT COUNT(*) as tableCount 
         FROM information_schema.tables 
@@ -144,7 +141,6 @@ const testConnection = async (retryCount = 0) => {
     console.error(`\n❌ DATABASE CONNECTION FAILED (Attempt ${retryCount + 1})`);
     console.error('🔴 Error:', error.message);
     
-    // Comprehensive error diagnostics
     if (error.original) {
       console.error('🔧 Detailed Error Analysis:');
       console.error('   Code:', error.original.code);
@@ -155,71 +151,40 @@ const testConnection = async (retryCount = 0) => {
       }
     }
     
-    // Connection target information
-    console.log('🎯 Connection Target:');
-    if (process.env.DATABASE_URL) {
-      const safeUrl = process.env.DATABASE_URL.replace(/:[^:@]+@/, ':****@');
-      console.log('   URL:', safeUrl);
-      
-      // Parse and show individual components
-      const urlParts = process.env.DATABASE_URL.match(/mysql:\/\/([^:]+):([^@]+)@([^:]+):(\d+)\/(.+)/);
-      if (urlParts) {
-        console.log('   Username:', urlParts[1]);
-        console.log('   Host:', urlParts[3]);
-        console.log('   Port:', urlParts[4]);
-        console.log('   Database:', urlParts[5]);
-        console.log('   Password Length:', urlParts[2].length, 'characters');
-      }
-    }
-
     // Retry logic with progressive delay
     if (retryCount < MAX_RETRIES - 1) {
-      const delay = (retryCount + 1) * 2000; // 2s, 4s, 6s
+      const delay = (retryCount + 1) * 2000;
       console.log(`⏳ Retrying in ${delay/1000} seconds...`);
       await new Promise(resolve => setTimeout(resolve, delay));
       return testConnection(retryCount + 1);
     }
 
     console.error('\n💥 ALL CONNECTION ATTEMPTS FAILED');
-    console.log('🚨 TROUBLESHOOTING CHECKLIST:');
-    console.log('   1. ✅ DATABASE_URL is set in Render environment variables');
-    console.log('   2. 🔄 Password is correct (no URL encoding needed for your password)');
-    console.log('   3. 🌐 Railway database has public networking enabled');
-    console.log('   4. 🔒 SSL is properly configured');
-    console.log('   5. 📡 Network connectivity between Render and Railway');
-    console.log('   6. ⏰ Database server is running and accessible');
-    
     return false;
   }
 };
 
 // ------------------------------------
-// Safe Database Synchronization
+// Safe Database Synchronization - PRODUCTION READY
 // ------------------------------------
 
 /**
- * Safely synchronize database models
+ * Safely synchronize database models - ALLOWS ALTER IN PRODUCTION
  */
 const syncDatabase = async (options = {}) => {
   try {
+    // ✅ ALLOW ALTER IN PRODUCTION FOR INITIAL SETUP
     const syncOptions = {
       force: false,
-      alter: NODE_ENV === 'development',
+      alter: true, // Always allow alter for table creation/modification
       ...options
     };
 
-    if (syncOptions.force && NODE_ENV === 'production') {
-      throw new Error('Force sync is not allowed in production');
-    }
-
-    console.log(`🔄 Database synchronization (${NODE_ENV} mode)...`);
+    console.log(`🔄 Database synchronization starting...`);
+    console.log(`📋 Sync mode: ${syncOptions.force ? 'FORCE' : syncOptions.alter ? 'ALTER' : 'SAFE'}`);
     
     if (syncOptions.force) {
-      console.warn('⚠️  FORCE SYNC: This will DROP ALL TABLES and data!');
-    } else if (syncOptions.alter) {
-      console.log('🔧 ALTER SYNC: Safe table modifications');
-    } else {
-      console.log('🔒 SAFE SYNC: Create missing tables only');
+      console.warn('🚨 FORCE SYNC: This will DROP ALL TABLES and data!');
     }
 
     await sequelize.sync(syncOptions);
@@ -229,9 +194,19 @@ const syncDatabase = async (options = {}) => {
     const modelNames = Object.keys(sequelize.models);
     console.log(`📋 Registered models: ${modelNames.join(', ')}`);
     
+    // Verify tables were created
+    const [tables] = await sequelize.query(`
+      SELECT COUNT(*) as tableCount 
+      FROM information_schema.tables 
+      WHERE table_schema = DATABASE()
+    `);
+    console.log(`📊 Total tables in database: ${tables[0].tableCount}`);
+    
     return true;
   } catch (error) {
     console.error('❌ Database synchronization failed:', error.message);
+    
+    // Don't throw error - allow server to continue running
     return false;
   }
 };
