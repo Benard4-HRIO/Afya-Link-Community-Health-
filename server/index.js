@@ -16,6 +16,8 @@ console.log('DATABASE_URL:', process.env.DATABASE_URL ? 'SET' : 'NOT SET');
 console.log('NODE_ENV:', process.env.NODE_ENV);
 console.log('CLIENT_URL:', process.env.CLIENT_URL);
 console.log('PORT:', process.env.PORT);
+console.log('JWT_SECRET:', process.env.JWT_SECRET ? '✅ SET' : '❌ NOT SET');
+console.log('JWT_EXPIRE:', process.env.JWT_EXPIRE || '7d (default)');
 
 const PORT = process.env.PORT || 10000;
 const NODE_ENV = process.env.NODE_ENV || 'development';
@@ -105,8 +107,10 @@ app.get('/api/debug/env', (req, res) => {
     nodeEnv: process.env.NODE_ENV,
     clientUrl: process.env.CLIENT_URL,
     port: process.env.PORT,
+    jwtSecret: process.env.JWT_SECRET ? 'SET' : 'NOT SET',
+    jwtExpire: process.env.JWT_EXPIRE || 'NOT SET',
     allEnvVars: Object.keys(process.env).filter(key => 
-      key.includes('DATABASE') || key.includes('URL') || key.includes('NODE')
+      key.includes('DATABASE') || key.includes('URL') || key.includes('NODE') || key.includes('JWT')
     )
   });
 });
@@ -178,6 +182,14 @@ const startServer = async () => {
     console.log(`🌐 Environment: ${NODE_ENV}`);
     console.log(`🔗 Client URL: ${CLIENT_URL}`);
     
+    // ✅ CRITICAL: Check JWT_SECRET before starting
+    if (!process.env.JWT_SECRET) {
+      console.error('❌ FATAL ERROR: JWT_SECRET is not set!');
+      console.log('💡 Please set JWT_SECRET in Render environment variables');
+      console.log('💡 Go to: Render Dashboard > Your Service > Environment > Add JWT_SECRET');
+      // Don't exit - let it continue but warn heavily
+    }
+    
     // Test database connection
     const dbConnected = await testConnection();
     
@@ -187,10 +199,15 @@ const startServer = async () => {
       process.exit(1);
     }
     
-    // ✅ ONLY ADDITION: Auto-sync database tables after successful connection
-    console.log('🔄 Auto-syncing database tables...');
+    // ✅ Database sync with safer options
+    console.log('🔄 Syncing database tables...');
     try {
-      await sequelize.sync({ alter: true });
+      // Use force: false and alter: false for production to avoid issues
+      const syncOptions = NODE_ENV === 'production' 
+        ? { force: false, alter: false } 
+        : { alter: false }; // Changed from alter: true to avoid index issues
+      
+      await sequelize.sync(syncOptions);
       console.log('✅ Database tables synchronized successfully');
       
       // Show table count
@@ -202,6 +219,7 @@ const startServer = async () => {
       console.log(`📊 Total tables created: ${tables[0].tableCount}`);
     } catch (syncError) {
       console.error('❌ Auto-sync failed:', syncError.message);
+      console.log('💡 Tip: You may need to manually create tables or check your model definitions');
       // Don't exit - continue server startup
     }
     

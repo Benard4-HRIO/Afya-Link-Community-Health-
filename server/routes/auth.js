@@ -7,9 +7,25 @@ const { forgotPasswordController } = require('../controllers/authController');
 
 const router = express.Router();
 
+// ✅ DEBUG: Check JWT_SECRET immediately when this module loads
+console.log('🔐 JWT Configuration Check:');
+console.log('JWT_SECRET:', process.env.JWT_SECRET ? '✅ SET' : '❌ NOT SET');
+console.log('JWT_EXPIRE:', process.env.JWT_EXPIRE || '7d (default)');
+
+if (!process.env.JWT_SECRET) {
+  console.error('⚠️  JWT_SECRET not properly configured');
+}
+
 // Helper: Generate JWT token
 const generateToken = (id) => {
-  return jwt.sign({ id }, process.env.JWT_SECRET, {
+  const secret = process.env.JWT_SECRET;
+  
+  if (!secret) {
+    console.error('❌ CRITICAL: JWT_SECRET is undefined at token generation!');
+    throw new Error('JWT_SECRET environment variable is not configured');
+  }
+  
+  return jwt.sign({ id }, secret, {
     expiresIn: process.env.JWT_EXPIRE || '7d',
   });
 };
